@@ -100,3 +100,64 @@ def play_the_video(video_file, subset=sample_train_folder):
     return HTML("""<video width=500 controls><source src="%s" type="video/mp4"></video>""" % data_url)
 
 play_the_video(fake_videos[52])
+
+IMG_SIZE = 224
+BATCH_SIZE = 64
+EPOCHS = 10
+
+MAX_SEQ_LENGTH = 20
+NUM_FEATURES = 2048
+
+# define a function to crop the center square of a given frame
+def crop_square(frame):
+    y, x = frame.shape[0:2] # get the height and width of the frame
+    min_dim = min(y, x) # get the minimum of the two dimensions
+    start_x_axis = (x // 2) - (min_dim // 2) # calculate the starting point for x-axis
+    start_y_axis = (y // 2) - (min_dim // 2) # calculate the starting point for y-axis
+    return frame[start_y_axis : start_y_axis + min_dim, start_x_axis : start_x_axis + min_dim] # return the center square of the frame
+
+
+# define a function to load a video and return its frames as a numpy array
+def load_the_video(path, max_frames=0, resize=(IMG_SIZE, IMG_SIZE)):
+    cap = cv2.VideoCapture(path) # read the video at the given path
+    frames = []
+    try:
+        while True:
+            ret, frame = cap.read() # read the next frame
+            if not ret:
+                break
+            frame = crop_square(frame) # crop the center square of the frame
+            frame = cv2.resize(frame, resize) # resize the frame
+            frame = frame[:, :, [2, 1, 0]] # swap the color channels
+            frames.append(frame)
+
+            if len(frames) == max_frames:
+                break
+    finally:
+        cap.release()
+    return np.array(frames) # return the list of frames as a numpy array
+
+def build_feature_extractor():
+    # Load pre-trained InceptionV3 model with pre-trained ImageNet weights
+    features_extractor = keras.applications.InceptionV3(
+        weights="imagenet",
+        include_top=False,
+        pooling="avg",
+        input_shape=(IMG_SIZE, IMG_SIZE, 3),
+    )
+    # Define a function to preprocess the input image using InceptionV3 preprocessing function
+    preprocess_input = keras.applications.inception_v3.preprocess_input
+
+    # Define input tensor
+    inputs = keras.Input((IMG_SIZE, IMG_SIZE, 3))
+    #preprocess the tensor
+    preprocessed = preprocess_input(inputs)
+
+    # Pass preprocessed input through the feature extractor model
+    outputs = features_extractor(preprocessed)
+    # Pass preprocessed input through the feature extractor model
+    return keras.Model(inputs, outputs, name="features_extractor")
+
+
+# Build a feature extractor model and store it in features_extractor variable
+features_extractor = build_feature_extractor()
