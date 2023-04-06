@@ -219,3 +219,41 @@ test_data, test_labels = load_all_videos(Test_set, "test")
 
 print(f"Frame features in train set: {train_data[0].shape}")
 print(f"Frame masks in train set: {train_data[1].shape}")
+
+# Define input layer for frame features
+frame_features_input = keras.Input((MAX_SEQ_LENGTH, NUM_FEATURES))
+# Define input layer for mask (optional, for variable-length sequences)
+mask_input = keras.Input((MAX_SEQ_LENGTH,), dtype="bool")
+
+# Apply a GRU layer with 16 units to the frame features input
+# Use the mask input to handle variable-length sequences
+x = keras.layers.GRU(16, return_sequences=True)(
+    frame_features_input, mask=mask_input
+)
+# Apply another GRU layer with 8 units to the output of the first GRU layer
+x = keras.layers.GRU(8)(x)
+# Apply dropout regularization 
+x = keras.layers.Dropout(0.4)(x)
+# Apply a dense layer with 8 units and ReLU activation to the output
+x = keras.layers.Dense(8, activation="relu")(x)
+# Apply a dense layer with 1 unit and sigmoid activation to the output of the previous dense layer
+output = keras.layers.Dense(1, activation="sigmoid")(x)
+
+# Define the model with frame features and mask inputs and output
+model = keras.Model([frame_features_input, mask_input], output)
+
+# Compile the model with binary cross-entropy loss and Adam optimizer, and accuracy metric
+model.compile(loss="binary_crossentropy", optimizer="adam", metrics=["accuracy"])
+# Print the model summary
+model.summary()
+
+checkpoint = keras.callbacks.ModelCheckpoint('model.h5', save_best_only=True)
+history = model.fit(
+        [train_data[0], train_data[1]],
+        train_labels,
+        validation_data=([test_data[0], test_data[1]],test_labels),
+        callbacks=[checkpoint],
+        epochs=EPOCHS,
+        batch_size=8
+    )
+
