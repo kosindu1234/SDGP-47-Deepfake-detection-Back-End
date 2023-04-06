@@ -161,3 +161,61 @@ def build_feature_extractor():
 
 # Build a feature extractor model and store it in features_extractor variable
 features_extractor = build_feature_extractor()
+
+# Define a function to prepare all the videos in the given dataframe
+def load_all_videos(df, root_dir):
+    # Get the number of videos in the dataframe
+    num_samples = len(df)
+    # Get the paths of all the videos in the dataframe
+    video_paths = list(df.index)
+    labels = df["label"].values
+    labels = np.array(labels=='FAKE').astype(np.int)
+
+    
+    frame_masks = np.zeros(shape=(num_samples, MAX_SEQ_LENGTH), dtype="bool")
+    frame_features = np.zeros(
+        shape=(num_samples, MAX_SEQ_LENGTH, NUM_FEATURES), dtype="float32"
+    )
+
+    # loop through each video.
+    for idx, path in enumerate(video_paths):
+        # Gather all its frames and add a batch dimension.
+        frames = load_the_video(os.path.join(root_dir, path))
+        frames = frames[None, ...]
+
+        # Create placeholders to store the masks and features of the current video
+        temp_frame_mask = np.zeros(shape=(1, MAX_SEQ_LENGTH,), dtype="bool")
+        temp_frame_features = np.zeros(
+            shape=(1, MAX_SEQ_LENGTH, NUM_FEATURES), dtype="float32"
+        )
+
+        # Extract features from the frames
+        for i, batch in enumerate(frames):
+            video_length = batch.shape[0]
+            length = min(MAX_SEQ_LENGTH, video_length)
+            # Loop through each frame of the current video and extract the features for each frame.
+            for j in range(length):
+                temp_frame_features[i, j, :] = features_extractor.predict(
+                    batch[None, j, :]
+                )
+            temp_frame_mask[i, :length] = 1  # 1 = not masked, 0 = masked
+
+        # Assign the extracted features and masks of the current video
+        frame_features[idx,] = temp_frame_features.squeeze()
+        frame_masks[idx,] = temp_frame_mask.squeeze()
+
+    return (frame_features, frame_masks), labels
+
+from sklearn.model_selection import train_test_split
+
+#Split the sample_train_metadata dataframe into train and test sets using the train_test_split function
+Train_set, Test_set = train_test_split(sample_train_metadata,test_size=0.1,random_state=42,stratify=sample_train_metadata['label'])
+
+print(Train_set.shape, Test_set.shape )
+
+#prepare train set and test set by extracting frame features
+train_data, train_labels = load_all_videos(Train_set, "train")
+test_data, test_labels = load_all_videos(Test_set, "test")
+
+print(f"Frame features in train set: {train_data[0].shape}")
+print(f"Frame masks in train set: {train_data[1].shape}")
